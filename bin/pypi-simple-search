@@ -1,0 +1,82 @@
+#!/bin/bash
+
+PSS_DIR=~/.local/share/pypi-simple-search
+PSS_CACHE=${PSS_DIR}/simple.txt
+
+curl_pypi() {
+    echo "Updating cache of PyPi packages"
+    curl -s https://pypi.org/simple/ > "${PSS_CACHE}.tmp"
+    # Remove header text
+    tail -n +7 "${PSS_CACHE}.tmp" > "$PSS_CACHE" && rm "${PSS_CACHE}.tmp"
+    # Remove html tags and whitespace
+    perl -pi -e 's/[\t ]+|<.+?>//g' "$PSS_CACHE"
+}
+
+print_help() {
+    echo "pypi-simple-search: a stop-gap replacement for \"pip search\""
+    echo "  Usage:"
+    echo "    $0 [-hu] [query]"
+    echo "  Options:"
+    echo "    -h      show this menu"
+    echo "    -u      update cache of pypi packages"
+    echo "  Arguments:"
+    echo "    query   package name to search"
+    echo "  Environment:"
+    echo "    \$PYPI_SIMPLE_SEARCH   search command to use, defaults to \"grep\""
+}
+
+update=0
+
+OPTIND=1 # Reset in case getopts has been used previously in the shell
+while getopts "h?u" opt; do
+    case "$opt" in
+    h|\?)
+        print_help
+        exit 0
+        ;;
+    u)  
+        # Update the pypi package cache
+        update=1
+        ;;
+    esac
+done
+
+shift $((OPTIND-1))
+
+[ "${1:-}" = "--" ] && shift
+
+if [ ! -d "$PSS_DIR" ]; then
+    mkdir -p "$PSS_DIR"
+    curl_pypi
+elif [ ! -f "$PSS_CACHE" ]; then
+    curl_pypi
+fi
+
+elapsed_time=$(( $(date +%s) - $(stat -f%c ~/.local/share/pypi-simple-search/simple.txt) ))
+if [ $elapsed_time -gt 604800 ]; then
+    # Update automatically if the cache is over 1 week old
+    echo "It's been over a week since the package cache was updated"
+    curl_pypi
+fi
+
+
+# If the user sets their own search preference (e.g. ag, rg, etc), use it
+if [ -z "${PYPI_SIMPLE_SEARCH}" ]; then
+    # Otherwise just use grep, because it's universal
+    pss_func="grep"
+else
+    pss_func="${PYPI_SIMPLE_SEARCH}"
+fi
+
+# Allow just updating the cache ie: $0 -u
+if [ $update -eq 1 ]; then
+    curl_pypi
+fi
+
+if [ -n "$1" ]; then
+    "$pss_func" "$1" "$PSS_CACHE"
+elif [ $update -eq 0 ]; then
+    # If no arg given and we are not updating the cache, educate the user
+    print_help
+    exit 1
+fi

@@ -1,0 +1,11 @@
+#!/bin/bash
+
+# A simple wrapper for pip for pypi-simple-search functionality
+PSS_BIN=$(which pypi-simple-search)
+PIP_BIN=$(which pip)
+
+if [ "$1" == "search" ]; then
+    shift && "$PSS_BIN" "$@"
+else
+    "$PIP_BIN" "$@"
+fi
