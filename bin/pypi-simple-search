@@ -52,7 +52,7 @@ elif [ ! -f "$PSS_CACHE" ]; then
     curl_pypi
 fi
 
-elapsed_time=$(( $(date +%s) - $(stat -f%c ~/.local/share/pypi-simple-search/simple.txt) ))
+elapsed_time=$(( $(date +%s) - $(stat --printf="%Y" ~/.local/share/pypi-simple-search/simple.txt) ))
 if [ $elapsed_time -gt 604800 ]; then
     # Update automatically if the cache is over 1 week old
     echo "It's been over a week since the package cache was updated"
