@@ -1,6 +1,6 @@
-# PyPi Simple Search
+# PyPi Simple Search (fork)
 
-A stop-gap replacement for `pip search`
+A stop-gap replacement for `pip search`. This fork fixes compatibility for Linux systems, particularly the `stat` command.
 
 ## What?
 
