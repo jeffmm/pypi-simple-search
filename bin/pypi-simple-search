@@ -52,7 +52,19 @@ elif [ ! -f "$PSS_CACHE" ]; then
     curl_pypi
 fi
 
-elapsed_time=$(( $(date +%s) - $(stat -f%c ~/.local/share/pypi-simple-search/simple.txt) ))
+# Thanks to @lfom for the Linux portability fix
+cache_time=0
+case "$(uname)" in
+     Darwin* | FreeBSD*)    cache_time=$(stat -f%c ${PSS_CACHE});;
+     Linux*)                cache_time=$(stat -c%Y ${PSS_CACHE});;
+     *)                     
+         echo "Sorry, unsuported or unknown system: $(uname)!"
+         echo "Please submit an issue here: https://github.com/jeffmm/pypi-simple-search/issues"
+         exit
+esac
+
+elapsed_time=$(( $(date +%s) - ${cache_time} ))
+
 if [ $elapsed_time -gt 604800 ]; then
     # Update automatically if the cache is over 1 week old
     echo "It's been over a week since the package cache was updated"
