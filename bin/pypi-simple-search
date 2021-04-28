@@ -62,30 +62,30 @@ fi
 
 # Thanks to @lfom for the Linux portability fix
 get_age() {
-    cache_time=0
+    local file="$1"
+    local cache_time=0
     case "$(uname)" in
-         Darwin* | FreeBSD*)    cache_time=$(stat -f%c "$1");;
-         Linux*)                cache_time=$(stat -c%Y "$1");;
+         Darwin* | FreeBSD*)    cache_time=$(stat -f%c "$file");;
+         Linux*)                cache_time=$(stat -c%Y "$file");;
          *)
              echo "Sorry, unsuported or unknown system: $(uname)!"
              echo "Please submit an issue here: https://github.com/jeffmm/pypi-simple-search/issues"
              exit
     esac
-    elapsed_time=$(( $(date +%s) - ${cache_time} ))
-    printf "%s" $elapsed_time
+    local elapsed_time=$(( $(date +%s) - ${cache_time} ))
+    printf "%d" $elapsed_time
 }
 
 json_pypi() {
     local pkg=$1
     local PKG_CACHE="${PKG_DIR}/$pkg.json"
-    local json=""
 
     # Get JSON metadata and cache it
     # https://warehouse.pypa.io/api-reference/json.html
     if [ $update -eq 1 ] || [ ! -f "${PKG_CACHE}" ] || [ $(get_age "${PKG_CACHE}") -gt 604800 ]; then
-        json=$(
-            set -euo pipefail
-            curl --silent --fail "https://pypi.org/pypi/${pkg}/json" | tee "${PKG_CACHE}"
+        (
+            set -eu
+            curl --silent --fail "https://pypi.org/pypi/${pkg}/json" > "${PKG_CACHE}"
         )
     fi
 
@@ -99,30 +99,27 @@ if [ $(get_age "${PSS_CACHE}") -gt 604800 ]; then
     curl_pypi
 fi
 
-# If the user sets their own search preference (e.g. ag, rg, etc), use it
-if [ -z "${PYPI_SIMPLE_SEARCH}" ]; then
-    # Otherwise just use grep, because it's universal
-    pss_func="grep"
-else
-    pss_func="${PYPI_SIMPLE_SEARCH}"
-fi
 
 # Allow just updating the cache ie: $0 -u
 if [ $update -eq 1 ]; then
     curl_pypi
 fi
 
+# If the user sets their own search preference (e.g. ag, rg, etc), use it
+# Otherwise just use grep, because it's universal
+: "${PYPI_SIMPLE_SEARCH:=grep}"
+
 search_pypi() {
-    "$pss_func" "$1" "$PSS_CACHE"
+    "$PYPI_SIMPLE_SEARCH" "$1" "$PSS_CACHE"
 }
 
 if [ -n "$1" ]; then
     if [ $metadata -eq 0 ]; then
-        search_pypi $1
+        search_pypi "$1"
     else
         # Loop over packages, get JSON metadata and display as a table
-        for pkg in $(search_pypi $1); do
-            json_pypi $pkg
+        for pkg in $(search_pypi "$1"); do
+            json_pypi "$pkg"
         done | column --table --separator $'\t'
     fi
 elif [ $update -eq 0 ]; then
