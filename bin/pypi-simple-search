@@ -20,7 +20,7 @@ print_help() {
     echo "  Options:"
     echo "    -h      show this menu"
     echo "    -u      update cache of pypi packages"
-    echo "    -m      update cache of package metadata via JSON API"
+    echo "    -m      display package descriptions from metadata"
     echo "  Arguments:"
     echo "    query   package name to search"
     echo "  Environment:"
