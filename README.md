@@ -4,7 +4,7 @@ A stop-gap replacement for `pip search`
 
 ## What?
 
-There are two scripts here, `pypi-simple-search` and `pip-pss`. The former is a script that replaces part of the functionality of `pip search` by infrequently caching the list of packages from [PyPi Simple Index](https://pypi.org/simple/) locally, and then searching the cache when called, resulting in a list of matching package names---no descriptions (yet). The latter is a wrapper for `pip` that calls `pypi-simple-search` when passed the `search` subcommand, and can be used in an alias to replace `pip`.
+There are two scripts here, `pypi-simple-search` and `pip-pss`. The former is a script that replaces part of the functionality of `pip search` by infrequently caching the list of packages from [PyPi Simple Index](https://pypi.org/simple/) locally, and then searching the cache when called, resulting in a list of matching package names (and optionally descriptions). The latter is a wrapper for `pip` that calls `pypi-simple-search` when passed the `search` subcommand, and can be used in an alias to replace `pip`.
 
 ## Why?
 
@@ -41,6 +41,7 @@ The options available are
 ```bash
 -h     Show the help menu
 -u     Update the local PyPi package cache
+-m     Display package descriptions from metadata
 ```
 
 The update will happen automatically when the script is first called, and also when the cache is more than a week old.
