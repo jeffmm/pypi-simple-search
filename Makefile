@@ -1,5 +1,5 @@
 NAME=pypi-simple-search
-VERSION=0.0.1
+VERSION=0.1.0
 
 DIRS=bin
 INSTALL_FILES=`find $(DIRS) -type f 2>/dev/null`
