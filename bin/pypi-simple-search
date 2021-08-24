@@ -120,7 +120,7 @@ if [ -n "$1" ]; then
         # Loop over packages, get JSON metadata and display as a table
         for pkg in $(search_pypi "$1"); do
             json_pypi "$pkg"
-        done | column --table --separator $'\t'
+        done | column -t -s $'\t'
     fi
 elif [ $update -eq 0 ]; then
     # If no arg given and we are not updating the cache, educate the user
