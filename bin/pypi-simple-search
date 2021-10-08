@@ -129,7 +129,7 @@ if [ -n "$1" ]; then
         # Loop over packages, get JSON metadata and display as a table
         search_pypi "$1" \
             | xargs -P 0 -I {} bash -c "json_pypi '{}'" \
-            | xargs -I {} bash -c "jq -r '[.info.name, .info.version, .info.summary] | @tsv' {}" \
+            | xargs jq -r '[.info.name, .info.version, .info.summary] | @tsv'  \
             | column -t -s $'\t' \
             | sort
     fi
