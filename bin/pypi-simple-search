@@ -53,6 +53,39 @@ shift $((OPTIND-1))
 
 [ "${1:-}" = "--" ] && shift
 
+# Export global variables because xargs calls a bash subprocess
+export update
+export PLATFORM=$(uname)
+export NOW=$(date +%s)
+
+# Thanks to @lfom for the Linux portability fix
+case "${PLATFORM}" in
+     Darwin* | FreeBSD*)
+        _stat_time_mod() {
+            stat -f%c "$1"
+        };
+        _xargs_parallel() {
+            xargs -P 4 "$@"
+        }
+    ;;
+     Linux*  | CYGWIN*)
+        _stat_time_mod() {
+           stat -c%Y "$1"
+        };
+        _xargs_parallel() {
+            xargs -P 0 "$@"
+        }
+    ;;
+     *)
+         echo "Sorry, unsuported or unknown system: $(uname)!"
+         echo "Please submit an issue here: https://github.com/jeffmm/pypi-simple-search/issues"
+         exit
+esac
+
+# Export global functions
+export -f _stat_time_mod
+export -f _xargs_parallel
+
 if [ ! -d "$PSS_DIR" ]; then
     mkdir -p "$PSS_DIR"
     curl_pypi
@@ -60,24 +93,11 @@ elif [ ! -f "$PSS_CACHE" ]; then
     curl_pypi
 fi
 
-# Export global variables because xargs calls a bash subprocess
-export update
-export PLATFORM=$(uname)
-export NOW=$(date +%s)
 
-# Thanks to @lfom for the Linux portability fix
 get_age() {
     set -u
     local file="$1"
-    local cache_time=0
-    case "${PLATFORM}" in
-         Darwin* | FreeBSD*)    cache_time=$(stat -f%c "$file");;
-         Linux*  | CYGWIN*)     cache_time=$(stat -c%Y "$file");;
-         *)
-             echo "Sorry, unsuported or unknown system: $(uname)!"
-             echo "Please submit an issue here: https://github.com/jeffmm/pypi-simple-search/issues"
-             exit
-    esac
+    local cache_time=$(_stat_time_mod "$file")
     local elapsed_time=$(( ${NOW} - ${cache_time} ))
     printf "%d" $elapsed_time
 }
