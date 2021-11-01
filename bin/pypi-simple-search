@@ -112,7 +112,7 @@ json_pypi() {
     if [ $update -eq 1 ] || [ ! -f "${pkg_cache}" ] || [ $(get_age "${pkg_cache}") -gt 604800 ]; then
         (
             set -eu
-            curl -L --silent --fail "https://pypi.org/pypi/${pkg}/json" > "${pkg_cache}"
+            curl -L --silent --fail "https://pypi.org/pypi/${pkg}/json" -o "${pkg_cache}"
         )
     fi
 
