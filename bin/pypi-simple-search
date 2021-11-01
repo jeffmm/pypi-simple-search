@@ -1,8 +1,8 @@
 #!/bin/bash
 
 PSS_DIR=~/.local/share/pypi-simple-search
-PKG_DIR="${PSS_DIR}/pkg"
-PSS_CACHE=${PSS_DIR}/simple.txt
+export PKG_DIR="${PSS_DIR}/pkg"
+export PSS_CACHE=${PSS_DIR}/simple.txt
 
 curl_pypi() {
     echo "Updating cache of PyPi packages"
@@ -53,6 +53,39 @@ shift $((OPTIND-1))
 
 [ "${1:-}" = "--" ] && shift
 
+# Export global variables because xargs calls a bash subprocess
+export update
+export PLATFORM=$(uname)
+export NOW=$(date +%s)
+
+# Thanks to @lfom for the Linux portability fix
+case "${PLATFORM}" in
+     Darwin* | FreeBSD*)
+        _stat_time_mod() {
+            stat -f%c "$1"
+        };
+        _xargs_parallel() {
+            xargs -P 4 "$@"
+        }
+    ;;
+     Linux*  | CYGWIN*)
+        _stat_time_mod() {
+           stat -c%Y "$1"
+        };
+        _xargs_parallel() {
+            xargs -P 0 "$@"
+        }
+    ;;
+     *)
+         echo "Sorry, unsuported or unknown system: $(uname)!"
+         echo "Please submit an issue here: https://github.com/jeffmm/pypi-simple-search/issues"
+         exit
+esac
+
+# Export global functions
+export -f _stat_time_mod
+export -f _xargs_parallel
+
 if [ ! -d "$PSS_DIR" ]; then
     mkdir -p "$PSS_DIR"
     curl_pypi
@@ -60,38 +93,34 @@ elif [ ! -f "$PSS_CACHE" ]; then
     curl_pypi
 fi
 
-# Thanks to @lfom for the Linux portability fix
+
 get_age() {
+    set -u
     local file="$1"
-    local cache_time=0
-    case "$(uname)" in
-         Darwin* | FreeBSD*)    cache_time=$(stat -f%c "$file");;
-         Linux*  | CYGWIN*)     cache_time=$(stat -c%Y "$file");;
-         *)
-             echo "Sorry, unsuported or unknown system: $(uname)!"
-             echo "Please submit an issue here: https://github.com/jeffmm/pypi-simple-search/issues"
-             exit
-    esac
-    local elapsed_time=$(( $(date +%s) - ${cache_time} ))
+    local cache_time=$(_stat_time_mod "$file")
+    local elapsed_time=$(( ${NOW} - ${cache_time} ))
     printf "%d" $elapsed_time
 }
 
 json_pypi() {
-    local pkg=$1
-    local PKG_CACHE="${PKG_DIR}/$pkg.json"
+    set -u
+    local pkg="$1"
+    local pkg_cache="${PKG_DIR}/${pkg}.json"
 
     # Get JSON metadata and cache it
     # https://warehouse.pypa.io/api-reference/json.html
-    if [ $update -eq 1 ] || [ ! -f "${PKG_CACHE}" ] || [ $(get_age "${PKG_CACHE}") -gt 604800 ]; then
+    if [ $update -eq 1 ] || [ ! -f "${pkg_cache}" ] || [ $(get_age "${pkg_cache}") -gt 604800 ]; then
         (
             set -eu
-            curl --silent --fail "https://pypi.org/pypi/${pkg}/json" > "${PKG_CACHE}"
+            curl -L --silent --fail "https://pypi.org/pypi/${pkg}/json" -o "${pkg_cache}"
         )
     fi
 
-    # Get some keys and display as tab-separated-values
-    jq -r '[.info.name, .info.version, .info.summary] | @tsv' "${PKG_CACHE}"
+    printf "%s " "${pkg_cache}"
 }
+
+export -f get_age
+export -f json_pypi
 
 if [ $(get_age "${PSS_CACHE}") -gt 604800 ]; then
     # Update automatically if the cache is over 1 week old
@@ -118,9 +147,11 @@ if [ -n "$1" ]; then
         search_pypi "$1"
     else
         # Loop over packages, get JSON metadata and display as a table
-        for pkg in $(search_pypi "$1"); do
-            json_pypi "$pkg"
-        done | column -t -s $'\t'
+        search_pypi "$1" \
+            | _xargs_parallel -I {} bash -c "json_pypi '{}'" \
+            | xargs jq -r '[.info.name, .info.version, .info.summary] | @tsv'  \
+            | column -t -s $'\t' \
+            | sort
     fi
 elif [ $update -eq 0 ]; then
     # If no arg given and we are not updating the cache, educate the user
