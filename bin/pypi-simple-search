@@ -23,8 +23,9 @@ print_help() {
     echo "    -m      display package descriptions from metadata"
     echo "    -v      display only the version"
     echo "    -s      display only the summary"
-    echo "    -p      pretty print (use with -m -v -s)"
+    echo "    -p      pretty print (use with -m -v or implies -s)"
     echo "    -j      print json rather than a table"
+    echo "    -c      Make pretty print columns fit nicely (use with -m -v -s and implies -p)"
     echo "  Arguments:"
     echo "    query   package name to search"
     echo "  Environment:"
@@ -44,11 +45,12 @@ update=0
 metadata=0
 jsout=0
 pprint=0
+pprint_col=0
 jsquery='[.info.name, .info.version, .info.summary]'
 fields='1 2 3'
 
 OPTIND=1 # Reset in case getopts has been used previously in the shell
-while getopts "h?umsvjp" opt; do
+while getopts "h?umsvjpc" opt; do
     case "$opt" in
     h|\?)
         print_help
@@ -58,7 +60,7 @@ while getopts "h?umsvjp" opt; do
         update=1
         ;;
     m)  # Prepare directory to cache JSON metadata
-        metadata=1
+        # Haneled with s v j, below
         ;;
     s)  # Just get the package summary (if it exists)
         # Prepare directory to cache JSON metadata
@@ -74,10 +76,15 @@ while getopts "h?umsvjp" opt; do
     p)  # Pretty print the table (use tab columns rather than a single space)
         pprint=1
         ;;
+    c)  # When pretty printing, make the columns neat, implies -p
+        pprint_col=1
+        pprint=1
+        ;;
     esac
 
+    # Save lots of repeated code
     case "$opt" in
-    m|s|v|j)
+    m|s|v|j|p|c)
         mkdir -p "$PKG_DIR"
         metadata=1
         ;;
@@ -245,11 +252,10 @@ if [ -n "$1" ]; then
     else
         # Loop over packages, get JSON metadata and display as a table
         jsfiles=$(search_pypi "$1" | _xargs_parallel -I {} bash -c "json_pypi '{}'")
-
+        # Collect all the data from all the files into one dataset
         dataset=$(cat ${jsfiles} | jq -r "${jsquery} | @tsv")
 
         declare -a colwidths=($(table_column_widths "${dataset}"))
-
         # Make some space between columns
         for ((col=0; col < ${#colwidths[*]}; col++)); do
             colwidths[col]=$((${colwidths[col]} + 5))
@@ -263,10 +269,18 @@ if [ -n "$1" ]; then
             oldIFS=$IFS
             IFS=$'\n'
             for row in ${dataset}; do
+                rowtxt=$(echo "${row}" | cut -d $'\t' -f "${fields}")
                 if [ ${pprint} -eq 1 ]; then
-                    echo "${row}" | expand --tabs=${colwidths[0]},+${colwidths[1]}
+                    if [ ${pprint_col} -eq 1 ]; then
+                        # Print <name       ><ver       ><lots of text with spaces>
+                        echo "${rowtxt}" | expand --tabs=${colwidths[0]},+${colwidths[1]} | unexpand
+                    else
+                        # Print <name><tab><ver><tab><lots of text with spaces>
+                        echo "${rowtxt}" 
+                    fi
                 else
-                    echo "${row}" | unexpand
+                    # Print <name> <ver> <lots more text also with spaces>
+                    echo "${rowtxt}" | expand -t1
                 fi
             done
             IFS=${oldIFS}
