@@ -27,11 +27,21 @@ print_help() {
     echo "    \$PYPI_SIMPLE_SEARCH   search command to use, defaults to \"grep\""
 }
 
+# Check for jq
+res=$(jq --version) 2>/dev/null
+if [ $? -eq 0 ]; then
+  jq_version=$(echo "${res}" | cut -f2 -d'-')
+else
+  echo "I can't find jq\nYou must install JSON Processor, jq   e.g. sudo apt install jq)"
+  exit 1
+fi
+
 update=0
 metadata=0
+fields='1 2 3'
 
 OPTIND=1 # Reset in case getopts has been used previously in the shell
-while getopts "h?um" opt; do
+while getopts "h?umsv" opt; do
     case "$opt" in
     h|\?)
         print_help
@@ -46,6 +56,18 @@ while getopts "h?um" opt; do
         mkdir -p "$PKG_DIR"
         metadata=1
         ;;
+    s)  # Just get the package summary (if it exists)
+        # Prepare directory to cache JSON metadata
+        mkdir -p "$PKG_DIR"
+        metadata=1
+        fields=3
+        ;;
+    v)  # Just get the package version (if it exists)
+        # Prepare directory to cache JSON metadata
+        mkdir -p "$PKG_DIR"
+        metadata=1
+        fields=2
+        ;;     
     esac
 done
 
