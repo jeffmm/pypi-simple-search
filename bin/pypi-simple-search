@@ -102,6 +102,29 @@ get_age() {
     printf "%d" $elapsed_time
 }
 
+
+json_missing() {
+    # $1 package name
+    # $2 package cache .json file path
+    set -u
+    echo "json_missing($1 $2)" >> log
+    TMP_JSON=$(cat <<- EOF
+    {
+    "info": {
+        "description": "** EMPTY PACKAGE **<br><br>This package never released any files",
+        "description_content_type": "text/markdown",
+        "license": "Unknown",
+        "name": "$1",
+        "summary": "** $1 has no released files",
+        "version": "?.?.?"
+    }
+}
+EOF
+)
+    echo "$(echo ${TMP_JSON})" > $2
+}
+
+
 json_pypi() {
     set -u
     local pkg="$1"
@@ -116,11 +139,17 @@ json_pypi() {
         )
     fi
 
+    if [ ! -f ${pkg_cache} ]; then
+        printf "$(json_missing ${pkg} ${pkg_cache})"
+        echo "$(json_missing ${pkg} ${pkg_cache})" >> log
+    fi
+
     printf "%s " "${pkg_cache}"
 }
 
 export -f get_age
 export -f json_pypi
+export -f json_missing
 
 if [ $(get_age "${PSS_CACHE}") -gt 604800 ]; then
     # Update automatically if the cache is over 1 week old
@@ -141,6 +170,7 @@ fi
 search_pypi() {
     "$PYPI_SIMPLE_SEARCH" "$1" "$PSS_CACHE"
 }
+
 
 if [ -n "$1" ]; then
     if [ $metadata -eq 0 ]; then
