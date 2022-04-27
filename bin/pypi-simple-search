@@ -255,6 +255,13 @@ if [ -n "$1" ]; then
         # Collect all the data from all the files into one dataset
         dataset=$(cat ${jsfiles} | jq -r "${jsquery} | @tsv")
 
+        record_count=$(wc -l ${dataset})
+
+        if [ ${record_count} -eq 0 ]; then
+            # Nothing to declare
+            exit 1
+        fi
+
         declare -a colwidths=($(table_column_widths "${dataset}"))
         # Make some space between columns
         for ((col=0; col < ${#colwidths[*]}; col++)); do
