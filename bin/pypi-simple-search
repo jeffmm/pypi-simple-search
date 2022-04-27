@@ -21,6 +21,10 @@ print_help() {
     echo "    -h      show this menu"
     echo "    -u      update cache of pypi packages"
     echo "    -m      display package descriptions from metadata"
+    echo "    -v      display only the version"
+    echo "    -s      display only the summary"
+    echo "    -p      pretty print (use with -m -v -s)"
+    echo "    -j      print json rather than a table"
     echo "  Arguments:"
     echo "    query   package name to search"
     echo "  Environment:"
@@ -38,36 +42,47 @@ fi
 
 update=0
 metadata=0
+jsout=0
+pprint=0
+jsquery='[.info.name, .info.version, .info.summary]'
 fields='1 2 3'
 
 OPTIND=1 # Reset in case getopts has been used previously in the shell
-while getopts "h?umsv" opt; do
+while getopts "h?umsvjp" opt; do
     case "$opt" in
     h|\?)
         print_help
         exit 0
         ;;
-    u)
-        # Update the pypi package cache
+    u)  # Update the pypi package cache
         update=1
         ;;
-    m)
-        # Prepare directory to cache JSON metadata
-        mkdir -p "$PKG_DIR"
+    m)  # Prepare directory to cache JSON metadata
         metadata=1
         ;;
     s)  # Just get the package summary (if it exists)
         # Prepare directory to cache JSON metadata
-        mkdir -p "$PKG_DIR"
-        metadata=1
-        fields=3
+        fields="1 3"
         ;;
     v)  # Just get the package version (if it exists)
         # Prepare directory to cache JSON metadata
+        fields="1 2"
+        ;;    
+    j)  # Return JSON data
+        jsout=1
+        ;;
+    p)  # Pretty print the table (use tab columns rather than a single space)
+        pprint=1
+        ;;
+    esac
+
+    case "$opt" in
+    m|s|v|j)
         mkdir -p "$PKG_DIR"
         metadata=1
-        fields=2
-        ;;     
+        ;;
+    *)
+        ;;
     esac
 done
 
@@ -139,10 +154,10 @@ json_missing() {
         "name": "$1",
         "summary": "** $1 has no released files",
         "version": "?.?.?"
+        }
     }
-}
 EOF
-)
+    )
     echo "$(echo ${TMP_JSON})" > $2
 }
 
@@ -155,10 +170,10 @@ json_pypi() {
     # Get JSON metadata and cache it
     # https://warehouse.pypa.io/api-reference/json.html
     if [ $update -eq 1 ] || [ ! -f "${pkg_cache}" ] || [ $(get_age "${pkg_cache}") -gt 604800 ]; then
-        (
-            set -eu
-            curl -L --silent --fail "https://pypi.org/pypi/${pkg}/json" -o "${pkg_cache}"
-        )
+    (
+        set -eu
+        curl -L --silent --fail "https://pypi.org/pypi/${pkg}/json" -o "${pkg_cache}"
+    )
     fi
 
     if [ ! -f ${pkg_cache} ]; then
@@ -169,9 +184,39 @@ json_pypi() {
     printf "%s " "${pkg_cache}"
 }
 
+
+
+# $1 = tsv separated table data
+table_column_widths() {
+    declare -a cw
+    local oldIFS=$IFS
+    local colwidth
+    IFS=$'\n'
+    for row in $1; do
+        local ncol=0
+        IFS=$'\t'
+        for col in ${row}; do
+            colwidth=${#col}
+            if [ -z "${cw[ncol]}" ]; then
+                cw[ncol]=0
+            fi
+            if [ ${colwidth} -gt ${cw[ncol]} ]; then
+                cw[ncol]=${colwidth}
+            fi
+            ncol=$((${ncol} + 1))
+        done
+        IFS=$'\n'
+    done
+    IFS=${oldIFS}
+
+    echo ${cw[*]}
+    unset cw
+}
+
 export -f get_age
 export -f json_pypi
 export -f json_missing
+export -f table_column_widths
 
 if [ $(get_age "${PSS_CACHE}") -gt 604800 ]; then
     # Update automatically if the cache is over 1 week old
@@ -199,11 +244,35 @@ if [ -n "$1" ]; then
         search_pypi "$1"
     else
         # Loop over packages, get JSON metadata and display as a table
-        search_pypi "$1" \
-            | _xargs_parallel -I {} bash -c "json_pypi '{}'" \
-            | xargs jq -r '[.info.name, .info.version, .info.summary] | @tsv'  \
-            | column -t -s $'\t' \
-            | sort
+        jsfiles=$(search_pypi "$1" | _xargs_parallel -I {} bash -c "json_pypi '{}'")
+
+        dataset=$(cat ${jsfiles} | jq -r "${jsquery} | @tsv")
+
+        declare -a colwidths=($(table_column_widths "${dataset}"))
+
+        # Make some space between columns
+        for ((col=0; col < ${#colwidths[*]}; col++)); do
+            colwidths[col]=$((${colwidths[col]} + 5))
+        done
+
+        #dataset=$(echo ${dataset}|sort -t$'\t' -k1)
+
+        #echo "${dataset}"
+
+        if [ ${jsout} -eq 0 ]; then
+            oldIFS=$IFS
+            IFS=$'\n'
+            for row in ${dataset}; do
+                if [ ${pprint} -eq 1 ]; then
+                    echo "${row}" | expand --tabs=${colwidths[0]},+${colwidths[1]}
+                else
+                    echo "${row}" | unexpand
+                fi
+            done
+            IFS=${oldIFS}
+        else
+            echo "${dataset}"
+        fi
     fi
 elif [ $update -eq 0 ]; then
     # If no arg given and we are not updating the cache, educate the user
