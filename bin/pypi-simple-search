@@ -261,10 +261,10 @@ if [ -n "$1" ]; then
             colwidths[col]=$((${colwidths[col]} + 5))
         done
 
-        #dataset=$(echo ${dataset}|sort -t$'\t' -k1)
+        # Sort the results by the 1st column
+        dataset=$(echo "${dataset}" | sort -k1 -t$'\t')
 
-        #echo "${dataset}"
-
+        # Tabulate the dataset
         if [ ${jsout} -eq 0 ]; then
             oldIFS=$IFS
             IFS=$'\n'
@@ -285,6 +285,7 @@ if [ -n "$1" ]; then
             done
             IFS=${oldIFS}
         else
+            # If it's json we just print it as-is
             echo "${dataset}"
         fi
     fi
