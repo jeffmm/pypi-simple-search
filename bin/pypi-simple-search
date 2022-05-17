@@ -267,7 +267,7 @@ if [ -n "$1" ]; then
         # Collect all the data from all the files into one dataset
         dataset=$(cat ${jsfiles} | jq -r "${jsquery} | @tsv")
 
-        record_count=$(wc -l ${dataset})
+        record_count=$(echo ${dataset} | wc -l)
 
         if [ ${record_count} -eq 0 ]; then
             # Nothing to declare
