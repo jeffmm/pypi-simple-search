@@ -258,7 +258,9 @@ search_pypi() {
 
 if [ -n "$1" ]; then
     if [ $metadata -eq 0 ]; then
-        search_pypi "$1"
+        res=$(search_pypi "$1")
+        echo "$res"
+        exit $(echo "$res" | wc -w)
     else
         # Loop over packages, get JSON metadata and display as a table
         jsfiles=$(search_pypi "$1" | _xargs_parallel -I {} bash -c "json_pypi '{}'")
