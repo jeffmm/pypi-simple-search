@@ -44,6 +44,7 @@ The options available are
 -m     Display package descriptions from metadata
 -s     Just get the package summary (if it exists)
 -v     Just get the package version (if it exists)
+-n     Return single best match
 -j     Return raw JSON data
 -p     Pretty print the table (use tab columns rather than a single space)
 -c     When pretty printing, make the columns neat, (implies -p)
