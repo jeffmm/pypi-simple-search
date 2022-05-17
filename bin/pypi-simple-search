@@ -1,5 +1,15 @@
 #!/bin/bash
 
+
+# Return codes
+#   -3 - JSON processor missing
+#   -2 - Error exit (help)
+#   -1 - Error
+#    0 - Zero results found
+#   >0 - Normal successful exit, return code is the number of results found
+
+
+
 PSS_DIR=~/.local/share/pypi-simple-search
 export PKG_DIR="${PSS_DIR}/pkg"
 export PSS_CACHE=${PSS_DIR}/simple.txt
@@ -38,7 +48,7 @@ if [ $? -eq 0 ]; then
   jq_version=$(echo "${res}" | cut -f2 -d'-')
 else
   echo "I can't find jq\nYou must install JSON Processor, jq   e.g. sudo apt install jq)"
-  exit 1
+  exit -3
 fi
 
 update=0
@@ -54,13 +64,13 @@ while getopts "h?umsvjpc" opt; do
     case "$opt" in
     h|\?)
         print_help
-        exit 0
+        exit -2
         ;;
     u)  # Update the pypi package cache
         update=1
         ;;
     m)  # Prepare directory to cache JSON metadata
-        # Haneled with s v j, below
+        # Handled with s v j p c, below
         ;;
     s)  # Just get the package summary (if it exists)
         # Prepare directory to cache JSON metadata
@@ -122,8 +132,8 @@ case "${PLATFORM}" in
     ;;
      *)
          echo "Sorry, unsuported or unknown system: $(uname)!"
-         echo "Please submit an issue here: https://github.com/jeffmm/pypi-simple-search/issues"
-         exit
+         echo "Please submit an issue here: https://github.com/ths-moog/pypi-simple-search/issues"
+         exit -1
 esac
 
 # Export global functions
@@ -255,6 +265,13 @@ if [ -n "$1" ]; then
         # Collect all the data from all the files into one dataset
         dataset=$(cat ${jsfiles} | jq -r "${jsquery} | @tsv")
 
+        record_count=$(wc -l ${dataset})
+
+        if [ ${record_count} -eq 0 ]; then
+            # Nothing to declare
+            exit 0
+        fi
+
         declare -a colwidths=($(table_column_widths "${dataset}"))
         # Make some space between columns
         for ((col=0; col < ${#colwidths[*]}; col++)); do
@@ -289,8 +306,9 @@ if [ -n "$1" ]; then
             echo "${dataset}"
         fi
     fi
+    exit ${record_count} 
 elif [ $update -eq 0 ]; then
     # If no arg given and we are not updating the cache, educate the user
     print_help
-    exit 1
+    exit -2
 fi
