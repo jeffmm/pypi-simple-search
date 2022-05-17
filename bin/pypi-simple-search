@@ -295,39 +295,39 @@ function search_pypi() {
 
 
 if [ -n "$1" ]; then
+    search_res=$(search_pypi "$1")
+    record_count=$(echo "${search_res}" | wc -w)
+    if [ ${levenshtein} -eq 1 ] && [ ${record_count} -gt 1 ]; then
+        oldIFS=$IFS
+        IFS=$'\n'
+        declare -a rows=(${search_res})
+        best_match=
+        idx_best_match=0
+        for ((row=0; row < ${#rows[*]}; row++)); do
+            dist=$(lev_dist ${rows[row]} $1)
+            #echo "${row} ${rows[row]} ${dist}"
+            if [ -z ${beat_match} ] || [ ${dist} -lt ${best_match} ]; then
+                idx_best_match=${row}
+                best_match=${dist}
+            fi
+        done
+        search_res=${rows[idx_best_match]}
+        IFS=${oldIFS}
+        record_count=1
+    fi
+
+    if [ ${record_count} -eq 0 ]; then
+         # Nothing to declare
+        exit 0
+    fi
+
     if [ $metadata -eq 0 ]; then
-        res=$(search_pypi "$1")
-        record_count=$(echo "${res}" | wc -w)
-        if [ ${levenshtein} -eq 1 ] && [ ${record_count} -gt 1 ]; then
-            oldIFS=$IFS
-            IFS=$'\n'
-            declare -a rows=(${res})
-            best_match=99999
-            idx_best_match=0
-            for ((row=0; row < ${#rows[*]}; row++)); do
-                dist=$(lev_dist ${rows[row]} $1)
-                echo "${row} ${rows[row]} ${dist}"
-                if [ ${dist} -lt ${best_match} ]; then
-                    idx_best_match=${row}
-                    best_match=${dist}
-                fi
-            done
-            res=${rows[idx_best_match]}
-        fi
-        echo "$res"
-        exit $(echo "$res" | wc -w)
+        echo "${search_res}"
     else
         # Loop over packages, get JSON metadata and display as a table
-        jsfiles=$(search_pypi "$1" | _xargs_parallel -I {} bash -c "json_pypi '{}'")
+        jsfiles=$(echo "${search_res}" | _xargs_parallel -I {} bash -c "json_pypi '{}'")
         # Collect all the data from all the files into one dataset
         dataset=$(cat ${jsfiles} | jq -r "${jsquery} | @tsv")
-
-        record_count=$(echo ${dataset} | wc -l)
-
-        if [ ${record_count} -eq 0 ]; then
-            # Nothing to declare
-            exit 0
-        fi
 
         declare -a colwidths=($(table_column_widths "${dataset}"))
         # Make some space between columns
@@ -363,6 +363,7 @@ if [ -n "$1" ]; then
             echo "${dataset}"
         fi
     fi
+    
     exit ${record_count} 
 elif [ $update -eq 0 ]; then
     # If no arg given and we are not updating the cache, educate the user
