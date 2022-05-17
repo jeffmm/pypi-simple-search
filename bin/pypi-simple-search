@@ -305,8 +305,8 @@ if [ -n "$1" ]; then
         idx_best_match=0
         for ((row=0; row < ${#rows[*]}; row++)); do
             dist=$(lev_dist ${rows[row]} $1)
-            #echo "${row} ${rows[row]} ${dist}"
-            if [ -z ${beat_match} ] || [ ${dist} -lt ${best_match} ]; then
+            echo "${row} ${rows[row]} ${dist}"
+            if [ -z ${best_match} ] || [ ${dist} -lt ${best_match} ]; then
                 idx_best_match=${row}
                 best_match=${dist}
             fi
@@ -314,6 +314,7 @@ if [ -n "$1" ]; then
         search_res=${rows[idx_best_match]}
         IFS=${oldIFS}
         record_count=1
+        unset rows
     fi
 
     if [ ${record_count} -eq 0 ]; then
@@ -363,7 +364,7 @@ if [ -n "$1" ]; then
             echo "${dataset}"
         fi
     fi
-    
+
     exit ${record_count} 
 elif [ $update -eq 0 ]; then
     # If no arg given and we are not updating the cache, educate the user
