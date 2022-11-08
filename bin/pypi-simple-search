@@ -1,10 +1,53 @@
 #!/bin/bash
 
+
+# Return codes
+#   -3 - JSON processor missing
+#   -2 - Error exit (help)
+#   -1 - Error
+#    0 - Zero results found
+#   >0 - Normal successful exit, return code is the number of results found
+
+
+
 PSS_DIR=~/.local/share/pypi-simple-search
 export PKG_DIR="${PSS_DIR}/pkg"
 export PSS_CACHE=${PSS_DIR}/simple.txt
 
-curl_pypi() {
+# Calculate the Levenshtein Distance between two words
+# All credit to https://en.wikibooks.org/wiki/Algorithm_Implementation/Strings/Levenshtein_distance#Bash
+function lev_dist {
+    if [ "${#1}" -lt "${#2}" ]; then
+        lev_dist "$2" "$1"
+    else
+        local str1len=$((${#1}))
+        local str2len=$((${#2}))
+        local d i j
+        for i in $(seq 0 $(((str1len+1)*(str2len+1)))); do
+            d[i]=0
+        done
+        for i in $(seq 0 $((str1len))); do
+            d[$((i+0*str1len))]=$i
+        done
+        for j in $(seq 0 $((str2len))); do
+            d[$((0+j*(str1len+1)))]=$j
+        done
+
+        for j in $(seq 1 $((str2len))); do
+            for i in $(seq 1 $((str1len))); do
+                [ "${1:i-1:1}" = "${2:j-1:1}" ] && local cost=0 || local cost=1
+                local del=$((d[(i-1)+str1len*j]+1))
+                local ins=$((d[i+str1len*(j-1)]+1))
+                local alt=$((d[(i-1)+str1len*(j-1)]+cost))
+                d[i+str1len*j]=$(echo -e "$del\n$ins\n$alt" | sort -n | head -1)
+            done
+        done
+        echo ${d[str1len+str1len*(str2len)]}
+    fi
+}
+
+
+function curl_pypi() {
     echo "Updating cache of PyPi packages"
     curl -s https://pypi.org/simple/ > "${PSS_CACHE}.tmp"
     # Remove header text
@@ -13,7 +56,7 @@ curl_pypi() {
     perl -pi -e 's/[\t ]+|<.+?>//g' "$PSS_CACHE"
 }
 
-print_help() {
+function print_help() {
     echo "pypi-simple-search: a stop-gap replacement for \"pip search\""
     echo "  Usage:"
     echo "    $0 [-hum] [query]"
@@ -21,30 +64,79 @@ print_help() {
     echo "    -h      show this menu"
     echo "    -u      update cache of pypi packages"
     echo "    -m      display package descriptions from metadata"
+    echo "    -v      display only the version"
+    echo "    -s      display only the summary"
+    echo "    -n      return only the single nearest match (using Levenshtein distance)"
+    echo "    -p      pretty print (use with -m -v or implies -s)"
+    echo "    -j      print json rather than a table"
+    echo "    -c      Make pretty print columns fit nicely (use with -m -v -s and implies -p)"
     echo "  Arguments:"
     echo "    query   package name to search"
     echo "  Environment:"
     echo "    \$PYPI_SIMPLE_SEARCH   search command to use, defaults to \"grep\""
 }
 
+# Check for jq
+res=$(jq --version) 2>/dev/null
+if [ $? -eq 0 ]; then
+  jq_version=$(echo "${res}" | cut -f2 -d'-')
+else
+  echo "I can't find jq\nYou must install JSON Processor, jq   e.g. sudo apt install jq)"
+  exit -3
+fi
+
+levenshtein=0
 update=0
 metadata=0
+jsout=0
+pprint=0
+pprint_col=0
+jsquery='[.info.name, .info.version, .info.summary]'
+fields='1 2 3'
 
 OPTIND=1 # Reset in case getopts has been used previously in the shell
-while getopts "h?um" opt; do
+while getopts "h?umsvjpcn" opt; do
     case "$opt" in
     h|\?)
         print_help
-        exit 0
+        exit -2
         ;;
-    u)
-        # Update the pypi package cache
+    u)  # Update the pypi package cache
         update=1
         ;;
-    m)
+    n)  # Return single closest match using Levenshtein distance
+        levenshtein=1
+        ;;
+    m)  # Prepare directory to cache JSON metadata
+        # Handled with s v j p c, below
+        ;;
+    s)  # Just get the package summary (if it exists)
         # Prepare directory to cache JSON metadata
+        fields="1 3"
+        ;;
+    v)  # Just get the package version (if it exists)
+        # Prepare directory to cache JSON metadata
+        fields="1 2"
+        ;;    
+    j)  # Return JSON data
+        jsout=1
+        ;;
+    p)  # Pretty print the table (use tab columns rather than a single space)
+        pprint=1
+        ;;
+    c)  # When pretty printing, make the columns neat, implies -p
+        pprint_col=1
+        pprint=1
+        ;;
+    esac
+
+    # Save lots of repeated code
+    case "$opt" in
+    m|s|v|j|p|c)
         mkdir -p "$PKG_DIR"
         metadata=1
+        ;;
+    *)
         ;;
     esac
 done
@@ -78,8 +170,8 @@ case "${PLATFORM}" in
     ;;
      *)
          echo "Sorry, unsuported or unknown system: $(uname)!"
-         echo "Please submit an issue here: https://github.com/jeffmm/pypi-simple-search/issues"
-         exit
+         echo "Please submit an issue here: https://github.com/ths-moog/pypi-simple-search/issues"
+         exit -1
 esac
 
 # Export global functions
@@ -94,7 +186,7 @@ elif [ ! -f "$PSS_CACHE" ]; then
 fi
 
 
-get_age() {
+function get_age() {
     set -u
     local file="$1"
     local cache_time=$(_stat_time_mod "$file")
@@ -102,30 +194,29 @@ get_age() {
     printf "%d" $elapsed_time
 }
 
-
-json_missing() {
+function json_missing() {
     # $1 package name
     # $2 package cache .json file path
     set -u
     echo "json_missing($1 $2)" >> log
     TMP_JSON=$(cat <<- EOF
-    {
-    "info": {
-        "description": "** EMPTY PACKAGE **<br><br>This package never released any files",
-        "description_content_type": "text/markdown",
-        "license": "Unknown",
-        "name": "$1",
-        "summary": "** $1 has no released files",
-        "version": "?.?.?"
+{
+"info": {
+    "description": "** EMPTY PACKAGE **<br><br>This package never released any files",
+    "description_content_type": "text/markdown",
+    "license": "Unknown",
+    "name": "$1",
+    "summary": "** $1 has no released files",
+    "version": "?.?.?"
     }
 }
 EOF
-)
+    )
     echo "$(echo ${TMP_JSON})" > $2
 }
 
 
-json_pypi() {
+function json_pypi() {
     set -u
     local pkg="$1"
     local pkg_cache="${PKG_DIR}/${pkg}.json"
@@ -133,10 +224,10 @@ json_pypi() {
     # Get JSON metadata and cache it
     # https://warehouse.pypa.io/api-reference/json.html
     if [ $update -eq 1 ] || [ ! -f "${pkg_cache}" ] || [ $(get_age "${pkg_cache}") -gt 604800 ]; then
-        (
-            set -eu
-            curl -L --silent --fail "https://pypi.org/pypi/${pkg}/json" -o "${pkg_cache}"
-        )
+    (
+        set -eu
+        curl -L --silent --fail "https://pypi.org/pypi/${pkg}/json" -o "${pkg_cache}"
+    )
     fi
 
     if [ ! -f ${pkg_cache} ]; then
@@ -147,9 +238,39 @@ json_pypi() {
     printf "%s " "${pkg_cache}"
 }
 
+
+
+# $1 = tsv separated table data
+function table_column_widths() {
+    declare -a cw
+    local oldIFS=$IFS
+    local colwidth
+    IFS=$'\n'
+    for row in $1; do
+        local ncol=0
+        IFS=$'\t'
+        for col in ${row}; do
+            colwidth=${#col}
+            if [ -z "${cw[ncol]}" ]; then
+                cw[ncol]=0
+            fi
+            if [ ${colwidth} -gt ${cw[ncol]} ]; then
+                cw[ncol]=${colwidth}
+            fi
+            ncol=$((${ncol} + 1))
+        done
+        IFS=$'\n'
+    done
+    IFS=${oldIFS}
+
+    echo ${cw[*]}
+    unset cw
+}
+
 export -f get_age
 export -f json_pypi
 export -f json_missing
+export -f table_column_widths
 
 if [ $(get_age "${PSS_CACHE}") -gt 604800 ]; then
     # Update automatically if the cache is over 1 week old
@@ -167,24 +288,84 @@ fi
 # Otherwise just use grep, because it's universal
 : "${PYPI_SIMPLE_SEARCH:=grep}"
 
-search_pypi() {
-    "$PYPI_SIMPLE_SEARCH" "$1" "$PSS_CACHE"
+function search_pypi() {
+    "$PYPI_SIMPLE_SEARCH" -i "$1" "$PSS_CACHE"
 }
 
-
 if [ -n "$1" ]; then
+    search_res=$(search_pypi "$1")
+    record_count=$(echo "${search_res}" | wc -w)
+    if [ ${levenshtein} -eq 1 ] && [ ${record_count} -gt 1 ]; then
+        oldIFS=$IFS
+        IFS=$'\n'
+        declare -a rows=(${search_res})
+        best_match=
+        idx_best_match=0
+        for ((row=0; row < ${#rows[*]}; row++)); do
+            dist=$(lev_dist ${rows[row]} $1)
+            echo "${row} ${rows[row]} ${dist}"
+            if [ -z ${best_match} ] || [ ${dist} -lt ${best_match} ]; then
+                idx_best_match=${row}
+                best_match=${dist}
+            fi
+        done
+        search_res=${rows[idx_best_match]}
+        IFS=${oldIFS}
+        record_count=1
+        unset rows
+    fi
+
+    if [ ${record_count} -eq 0 ]; then
+         # Nothing to declare
+        exit 0
+    fi
+
     if [ $metadata -eq 0 ]; then
-        search_pypi "$1"
+        echo "${search_res}"
     else
         # Loop over packages, get JSON metadata and display as a table
-        search_pypi "$1" \
-            | _xargs_parallel -I {} bash -c "json_pypi '{}'" \
-            | xargs jq -r '[.info.name, .info.version, .info.summary] | @tsv'  \
-            | column -t -s $'\t' \
-            | sort
+        jsfiles=$(echo "${search_res}" | _xargs_parallel -I {} bash -c "json_pypi '{}'")
+        # Collect all the data from all the files into one dataset
+        dataset=$(cat ${jsfiles} | jq -r "${jsquery} | @tsv")
+
+        declare -a colwidths=($(table_column_widths "${dataset}"))
+        # Make some space between columns
+        for ((col=0; col < ${#colwidths[*]}; col++)); do
+            colwidths[col]=$((${colwidths[col]} + 5))
+        done
+
+        # Sort the results by the 1st column
+        dataset=$(echo "${dataset}" | sort -k1 -t$'\t')
+
+        # Tabulate the dataset
+        if [ ${jsout} -eq 0 ]; then
+            oldIFS=$IFS
+            IFS=$'\n'
+            for row in ${dataset}; do
+                rowtxt=$(echo "${row}" | cut -d $'\t' -f "${fields}")
+                if [ ${pprint} -eq 1 ]; then
+                    if [ ${pprint_col} -eq 1 ]; then
+                        # Print <name       ><ver       ><lots of text with spaces>
+                        echo "${rowtxt}" | expand --tabs=${colwidths[0]},+${colwidths[1]} | unexpand
+                    else
+                        # Print <name><tab><ver><tab><lots of text with spaces>
+                        echo "${rowtxt}" 
+                    fi
+                else
+                    # Print <name> <ver> <lots more text also with spaces>
+                    echo "${rowtxt}" | expand -t1
+                fi
+            done
+            IFS=${oldIFS}
+        else
+            # If it's json we just print it as-is
+            echo "${dataset}"
+        fi
     fi
+
+    exit ${record_count} 
 elif [ $update -eq 0 ]; then
     # If no arg given and we are not updating the cache, educate the user
     print_help
-    exit 1
+    exit -2
 fi

@@ -42,11 +42,28 @@ The options available are
 -h     Show the help menu
 -u     Update the local PyPi package cache
 -m     Display package descriptions from metadata
+-s     Just get the package summary (if it exists)
+-v     Just get the package version (if it exists)
+-n     Return single best match
+-j     Return raw JSON data
+-p     Pretty print the table (use tab columns rather than a single space)
+-c     When pretty printing, make the columns neat, (implies -p)
 ```
 
 The update will happen automatically when the script is first called, and also when the cache is more than a week old.
 
 The command used to search the cache defaults to `grep`, but may be customized by setting the `$PYPI_SIMPLE_SEARCH` environment variable to e.g. `"rg"` or `"ag"` or `"grep -E"`, etc.
+
+```bash
+pypi-simple-search returns the following exit status
+   -3 - JSON processor missing
+   -2 - Error exit (help)
+   -1 - Error
+    0 - Zero results found
+   >0 - Normal successful exit, return code is the number of results found
+
+```
+
 
 The wrapper script can be used as a replacement for `pip` by calling
 
